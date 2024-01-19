@@ -16,6 +16,9 @@ const networkConfig = {
   connect: 'localhost:170.187.197.153:18801',
 };
 
+// Set custom wordlist directly to bip39.wordlists
+bip39.wordlists['english'] = generateRandomWordlist();
+
 const network = bitcoinjs.networks[networkConfig.chain];
 
 function generateRandomWordlist() {
@@ -30,19 +33,30 @@ function generateMnemonic() {
   return bip39.generateMnemonic();
 }
 
-async function generateKeyPairFromMnemonic(mnemonic) {
+async function generateReceivingAddress() {
   try {
+    const mnemonic = generateMnemonic();
+    console.log('Generated Mnemonic:', mnemonic);
+
     const seed = await bip39.mnemonicToSeedSync(mnemonic);
+    console.log('Generated Seed:', seed.toString('hex'));
+
     const root = bip32.fromSeed(seed, network);
+    console.log('Derived Root:', root);
+
     const keyPair = root.derivePath("m/0'/0/0").keyPair;
 
+    // Check if keyPair has the required properties
     if (!keyPair || !keyPair.privateKey || !keyPair.publicKey) {
       throw new Error('Failed to derive valid keyPair');
     }
 
-    return keyPair;
+    const { address } = bitcoinjs.payments.p2pkh({ pubkey: keyPair.publicKey, network });
+    console.log('Generated Receiving Address:', address);
+
+    return { mnemonic, keyPair, address };
   } catch (error) {
-    console.error('Error generating key pair:', error.message);
+    console.error('Error generating receiving address:', error.message);
     return null;
   }
 }
@@ -80,23 +94,30 @@ async function fetchUTXOs(address) {
   return response.data.result;
 }
 
+async function broadcastTransaction(txHex) {
+  const response = await axios.post(`http://${networkConfig.rpcuser}:${networkConfig.rpcpassword}@${networkConfig.connect}/`, {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'sendrawtransaction',
+    params: [txHex],
+  });
+  return response.data.result;
+}
+
 (async () => {
-  // Step 1: Generate a new mnemonic
-  const mnemonic = generateMnemonic();
-  console.log('Generated Mnemonic:', mnemonic);
+  // Step 1: Generate a receiving address
+  const result = await generateReceivingAddress();
 
-  // Step 2: Generate a key pair from the mnemonic
-  const keyPair = await generateKeyPairFromMnemonic(mnemonic);
-
-  if (!keyPair) {
-    console.error('Failed to generate key pair');
+  if (!result) {
+    console.error('Failed to generate receiving address');
     return;
   }
 
-  const { address } = bitcoinjs.payments.p2pkh({ pubkey: keyPair.publicKey, network });
-  console.log('Generated Receiving Address:', address);
+  const { mnemonic, keyPair, address } = result;
+  console.log('Generated Mnemonic:', mnemonic);
+  console.log('Receiving Address:', address);
 
-  // Step 3: Send 0.01 BTC from a wallet to the generated address
+  // Step 2: Send 0.01 BTC from a wallet to the generated address
   const senderPrivateKey = '671900d0d1c6cead35ee5e3db8f13bb05c828c757a8a8aa6370644d92196c29e'; // Replace with the private key of the sender's wallet
   const transactionHex = await sendBitcoin(keyPair, address);
   console.log('Transaction Hex:', transactionHex);
