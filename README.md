@@ -1,4 +1,4 @@
-# Bitcoin-Transaction-Automation-with-scure-bip39-and-bitcoinjs-lib
+# pepe testnet & scure/bip39
 
 Overview:
 
